@@ -1,3 +1,11 @@
-all: *.cpp
-	g++ -g -O0 -Wall -o hesaff pyramid.cpp affine.cpp sim.cpp siftdesc.cpp helpers.cpp hesaff.cpp `pkg-config opencv --cflags --libs` -lrt
-	g++ -g -O0 -Wall -o hes pyramid.cpp sim.cpp siftdesc.cpp helpers.cpp hes.cpp `pkg-config opencv --cflags --libs` -lrt
+CPP_FILES := pyramid.cpp siftdesc.cpp helpers.cpp
+OBJ_FILES := $(addprefix obj/,$(notdir $(CPP_FILES:.cpp=.o)))
+FLAGS := -O3 -Wall -lrt -lboost_program_options -lboost_system `pkg-config --cflags --libs opencv` 
+
+all: hesaff
+
+hesaff: $(CPP_FILES) hesaff.cpp affine.cpp
+	g++ $(FLAGS) -o hesaff $(CPP_FILES) affine.cpp hesaff.cpp
+
+clean:
+	rm hesaff
