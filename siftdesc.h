@@ -37,18 +37,14 @@ struct SIFTDescriptor
 
 public:
    // top level interface
-   SIFTDescriptor(const SIFTDescriptorParams &par) :
-      mask(par.patchSize, par.patchSize, CV_32FC1),
-      grad(par.patchSize, par.patchSize, CV_32FC1), 
-      ori(par.patchSize, par.patchSize, CV_32FC1)
+   SIFTDescriptor(const SIFTDescriptorParams &par)
       {
          this->par = par;
          vec.resize(par.spatialBins * par.spatialBins * par.orientationBins);
-         computeCircularGaussMask(mask);
          precomputeBinsAndWeights();
       }
    
-   void computeSiftDescriptor(cv::Mat &patch);
+   void computeSiftDescriptor(Patch &patch);
 
 public:
    std::vector<float> vec;
@@ -57,13 +53,12 @@ private:
    // helper functions
    
 float normalize();
-   void sample();
-   void samplePatch();
+   void sample(const Patch &patch);
+   void samplePatch(const Patch &patch);
    void precomputeBinsAndWeights();
 
 private:
    SIFTDescriptorParams par;
-   cv::Mat mask, grad, ori;
    std::vector<int> precomp_bins;
    std::vector<float> precomp_weights;
    int *bin0, *bin1;

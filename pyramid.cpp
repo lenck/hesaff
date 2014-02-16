@@ -126,7 +126,6 @@ void HessianDetector::localizeKeypoint(int r, int c, float curScale, float pixel
 
    float b[3] = {};
    float val = 0;
-   bool converged = false;
    int nr = r, nc = c;
    
    for (int iter=0; iter<5; iter++)
@@ -180,7 +179,6 @@ void HessianDetector::localizeKeypoint(int r, int c, float curScale, float pixel
       {
          // converged, displacement is sufficiently small, terminate here
          // TODO: decide if we want only converged local extrema...
-         converged = true;
          break;
       }
    }

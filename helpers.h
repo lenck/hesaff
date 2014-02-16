@@ -10,6 +10,9 @@
 #ifndef __HELPERS_H__
 #define __HELPERS_H__
 
+#include <opencv2/core/core.hpp>
+#include <vector>
+
 void solveLinear3x3(float *A, float *b);
 bool getEigenvalues(float a, float b, float c, float d, float &l1, float &l2);
 void invSqrt(float &a, float &b, float &c, float &l1, float &l2);
@@ -27,5 +30,41 @@ cv::Mat doubleImage(const cv::Mat &input);
 cv::Mat halfImage(const cv::Mat &input);
 
 double getTime();
+
+struct Patch
+{
+public:
+   Patch(int patchSize):
+      patchSize(patchSize),
+      data(patchSize, patchSize, CV_32FC1),
+      gradMag(patchSize, patchSize, CV_32FC1),
+      gradAngle(patchSize, patchSize, CV_32FC1),
+      gradX(patchSize, patchSize, CV_32FC1),
+      gradY(patchSize, patchSize, CV_32FC1),
+      mask(patchSize, patchSize, CV_32FC1)
+   {
+      computeGaussMask(mask);
+   }
+
+   ~Patch()
+   {
+   }
+
+   void computeGradientCart();
+   void computeGradientPolar();
+
+public:
+   const int patchSize;
+   cv::Mat data;
+   cv::Mat gradMag;
+   cv::Mat gradAngle;
+   cv::Mat gradX;
+   cv::Mat gradY;
+   cv::Mat mask;
+
+};
+
+void computeHistAngles(Patch &patch, std::vector<float> &angles);
+
    
 #endif // __HELPERS_H__

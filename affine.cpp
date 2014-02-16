@@ -91,16 +91,20 @@ bool AffineShape::findAffineShape(const Mat &blur, float x, float y, float s, fl
          
       if (eigen_ratio_act < par.convergenceThreshold && eigen_ratio_bef < par.convergenceThreshold)
       {
-         if (affineShapeCallback)
+         if (affineShapeCallback) {
+            // convert shape into a up is up frame s.t. u12 = 0
+            rectifyAffineTransformationUpIsUp(u11, u12, u21, u22);
             affineShapeCallback->onAffineShapeFound(blur, x, y, s, pixelDistance, u11, u12, u21, u22, type, response, l);
+         }
          return true;
       }
    }
    return false;
 }
 
-bool AffineShape::normalizeAffine(const Mat &img, float x, float y, float s, float a11, float a12, float a21, float a22)
+bool AffineShape::normalizeAffinePrecise(const Mat &img, float x, float y, float s, float a11, float a12, float a21, float a22)
 {
+   // TODO problem with the dominant orientation... how to sample correctly...
    // determinant == 1 assumed (i.e. isotropic scaling should be separated in mrScale
    assert( fabs(a11*a22-a12*a21 - 1.0f) < 0.01);
    float mrScale = ceil(s * par.mrSize); // half patch size in pixels of image
@@ -109,7 +113,7 @@ bool AffineShape::normalizeAffine(const Mat &img, float x, float y, float s, flo
    float imageToPatchScale = float(patchImageSize) / float(par.patchSize);  // patch size in the image / patch size -> amount of down/up sampling
 
    // is patch touching boundary? if yes, ignore this feature
-   if (interpolateCheckBorders(img, x, y, a11*imageToPatchScale, a12*imageToPatchScale, a21*imageToPatchScale, a22*imageToPatchScale, patch))
+   if (interpolateCheckBorders(img, x, y, a11*imageToPatchScale, a12*imageToPatchScale, a21*imageToPatchScale, a22*imageToPatchScale, patch.data))
       return true;
    
    if (imageToPatchScale > 0.4)
@@ -128,7 +132,7 @@ bool AffineShape::normalizeAffine(const Mat &img, float x, float y, float s, flo
          // smooth accordingly
          gaussianBlurInplace(smoothed, 1.5f*imageToPatchScale);
          // subsample with corresponding scale
-         bool touchesBoundary = interpolate(smoothed, (float)(patchImageSize>>1), (float)(patchImageSize>>1), imageToPatchScale, 0, 0, imageToPatchScale, patch);
+         bool touchesBoundary = interpolate(smoothed, (float)(patchImageSize>>1), (float)(patchImageSize>>1), imageToPatchScale, 0, 0, imageToPatchScale, patch.data);
          assert(!touchesBoundary);
       } else
          return true;      
@@ -137,8 +141,29 @@ bool AffineShape::normalizeAffine(const Mat &img, float x, float y, float s, flo
       a11 *= imageToPatchScale; a12 *= imageToPatchScale;
       a21 *= imageToPatchScale; a22 *= imageToPatchScale;
       // ok, do the interpolation
-      bool touchesBoundary = interpolate(img, x, y, a11, a12, a21, a22, patch);
+      bool touchesBoundary = interpolate(img, x, y, a11, a12, a21, a22, patch.data);
       assert(!touchesBoundary);
    }
    return false;
+}
+
+
+
+bool AffineShape::normalizeAffineFast(const Mat &img, float x, float y, float s, float a11, float a12, float a21, float a22)
+{
+    // TODO test how much this works on similarity invariant images
+    // test it...
+    // eventually find a way how to solve it for extracting the patches from the scale space..
+   // determinant == 1 assumed (i.e. isotropic scaling should be separated in mrScale
+   float mrScale = ceil(s * par.mrSize); // half patch size in pixels of image
+
+   int   patchImageSize = 2*int(mrScale)+1; // odd size
+   float imageToPatchScale = float(patchImageSize) / float(par.patchSize);  // patch size in the image / patch size -> amount of down/up sampling
+
+   a11 *= imageToPatchScale; a12 *= imageToPatchScale;
+   a21 *= imageToPatchScale; a22 *= imageToPatchScale;
+
+   // ok, do the interpolation
+   bool touchesBoundary = interpolate(img, x, y, a11, a12, a21, a22, patch.data);
+   return touchesBoundary;
 }

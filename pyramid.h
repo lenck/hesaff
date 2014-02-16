@@ -51,7 +51,7 @@ struct HessianDetector
    enum {
       HESSIAN_DARK   = 0,
       HESSIAN_BRIGHT = 1,
-      HESSIAN_SADDLE = 2,
+      HESSIAN_SADDLE = 2
    };
 public:
    HessianKeypointCallback *hessianKeypointCallback;

@@ -47,7 +47,7 @@ struct SimShape
 {
 public:   
    SimShape(const SimShapeParams &par) :
-      patch(par.patchSize, par.patchSize, CV_32FC1)
+      patch(par.patchSize)
       {                     
          this->par = par;
          simShapeCallback = 0;
@@ -58,7 +58,7 @@ public:
       } 
 
    // fills patch with sim normalized neighbourhood around point in the img, enlarged mrSize times
-   bool normalize(const cv::Mat &img, float x, float y, float s);
+   bool normalize(const cv::Mat &img, float x, float y, float s, float angle);
 
    void setSimShapeCallback(SimShapeCallback *callback)
       {
@@ -66,7 +66,7 @@ public:
       }
 
 public:
-   cv::Mat patch;
+   Patch patch;
 
 protected:
    SimShapeParams par;

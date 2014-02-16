@@ -48,22 +48,24 @@ void SIFTDescriptor::precomputeBinsAndWeights()
    }
 }
 
-void SIFTDescriptor::samplePatch()
+void SIFTDescriptor::samplePatch(const Patch &patch)
 {  
    for (int r = 0; r < par.patchSize; ++r)
    {
       const int br0 = par.spatialBins * bin0[r]; const float wr0 = w0[r];
       const int br1 = par.spatialBins * bin1[r]; const float wr1 = w1[r];
+      // TODO rewrite access to pointers
       for (int c = 0; c < par.patchSize; ++c)
       {
-         float val = mask.at<float>(r,c) * grad.at<float>(r,c);
+         float val = patch.mask.at<float>(r,c) * patch.gradMag.at<float>(r,c);
          
          const int bc0 = bin0[c]; const float wc0 = w0[c]*val;
          const int bc1 = bin1[c]; const float wc1 = w1[c]*val;
          
          // ori from atan2 is in range <-pi,pi> so add 2*pi to be surely above zero         
-         const float o = float(par.orientationBins)*(ori.at<float>(r,c) + 2*M_PI)/(2*M_PI);
-         
+         //const float o = float(par.orientationBins)*(patch.gradAngle.at<float>(r,c) + M_PI)/(2.f*M_PI);
+         const float o = float(par.orientationBins)*(patch.gradAngle.at<float>(r,c) + 2*M_PI)/(2*M_PI);
+
          int   bo0 = (int)o;
          const float wo1 =  o - bo0; 
          bo0 %= par.orientationBins;
@@ -95,11 +97,12 @@ float SIFTDescriptor::normalize()
    return vectlen;
 }
 
-void SIFTDescriptor::sample()
+void SIFTDescriptor::sample(const Patch &patch)
 {
    for (size_t i = 0; i < vec.size(); i++) vec[i]=0;
    // accumulate histograms
-   samplePatch(); normalize();
+   samplePatch(patch);
+   normalize();
    // check if there are some values above threshold
    bool changed = false; 
    for (size_t i = 0; i < vec.size(); i++) if (vec[i] > par.maxBinValue) { vec[i] = par.maxBinValue; changed = true; }
@@ -112,29 +115,9 @@ void SIFTDescriptor::sample()
    }
 }
 
-void SIFTDescriptor::computeSiftDescriptor(Mat &patch)
+void SIFTDescriptor::computeSiftDescriptor(Patch &patch)
 {
-   const int width = patch.cols;
-   const int height = patch.rows;
-   // photometrically normalize with weights as in SIFT gradient magnitude falloff
-   float mean, var;
-   photometricallyNormalize(patch, mask, mean, var);
-   // prepare gradients
-   for (int r = 0; r < height; ++r)
-      for (int c = 0; c < width; ++c) 
-      {
-         float xgrad, ygrad; 
-         if (c == 0) xgrad = patch.at<float>(r,c+1) - patch.at<float>(r,c); else 
-            if (c == width-1) xgrad = patch.at<float>(r,c) - patch.at<float>(r,c-1); else 
-               xgrad = patch.at<float>(r,c+1) - patch.at<float>(r,c-1);
-         
-         if (r == 0) ygrad = patch.at<float>(r+1,c) - patch.at<float>(r,c); else 
-            if (r == height-1) ygrad = patch.at<float>(r,c) - patch.at<float>(r-1,c); else
-               ygrad = patch.at<float>(r+1,c) - patch.at<float>(r-1,c);
-         
-         grad.at<float>(r,c) = ::sqrt(xgrad * xgrad + ygrad * ygrad);
-         ori.at<float>(r,c) = atan2(ygrad, xgrad);
-      }
+   patch.computeGradientPolar();
    // compute SIFT vector
-   sample();
+   sample(patch);
 }

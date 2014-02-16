@@ -34,6 +34,8 @@ struct AffineShapeParams
    // size of the measurement region (as multiple of the feature scale)
    float mrSize;
 
+   bool fastNorm;
+
    AffineShapeParams()
       {
          maxIterations = 16;
@@ -42,6 +44,7 @@ struct AffineShapeParams
          patchSize = 41;
          smmWindowSize = 19;
          mrSize = 3.0f*sqrt(3.0f);
+         fastNorm = false;
       }
 };
 
@@ -61,7 +64,7 @@ struct AffineShape
 {
 public:   
    AffineShape(const AffineShapeParams &par) : 
-      patch(par.patchSize, par.patchSize, CV_32FC1),
+      patch(par.patchSize),
       mask(par.smmWindowSize, par.smmWindowSize, CV_32FC1), 
       img(par.smmWindowSize, par.smmWindowSize, CV_32FC1), 
       fx(par.smmWindowSize, par.smmWindowSize, CV_32FC1), 
@@ -81,8 +84,13 @@ public:
    // computes affine shape 
    bool findAffineShape(const cv::Mat &blur, float x, float y, float s, float pixelDistance, int type, float response);   
 
-   // fills patch with affine normalized neighbourhood around point in the img, enlarged mrSize times
-   bool normalizeAffine(const cv::Mat &img, float x, float y, float s, float a11, float a12, float a21, float a22);
+   bool normalize(const cv::Mat &img, float x, float y, float s, float a11, float a12, float a21, float a22)
+   {
+      if (par.fastNorm)
+         return normalizeAffineFast(img, x, y, s, a11, a12, a21, a22);
+      else
+         return normalizeAffinePrecise(img, x, y, s, a11, a12, a21, a22);
+   }
 
    void setAffineShapeCallback(AffineShapeCallback *callback)
       {
@@ -90,10 +98,15 @@ public:
       }
 
 public:
-   cv::Mat patch;
+   Patch patch;
 
 protected:
    AffineShapeParams par;
+
+   // fills patch with affine normalized neighbourhood around point in the img, enlarged mrSize times
+   bool normalizeAffinePrecise(const cv::Mat &img, float x, float y, float s, float a11, float a12, float a21, float a22);
+
+   bool normalizeAffineFast(const cv::Mat &img, float x, float y, float s, float a11, float a12, float a21, float a22);
 
 private:
    AffineShapeCallback *affineShapeCallback;

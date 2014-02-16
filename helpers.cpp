@@ -7,6 +7,7 @@
  * 
  */
 
+#include "helpers.h"
 #include <cmath>
 #include <iostream>
 #include <cv.h>
@@ -19,6 +20,7 @@ using namespace std;
 #include <sys/time.h>
 #include <unistd.h>
 #include <stdio.h>
+
 
 double getTime()
 {     
@@ -336,4 +338,140 @@ Mat halfImage(const Mat &input)
       for (int c = 0, ci = 0; c < n.cols; c++, ci += 2)
          *out++ = input.at<float>(ri,ci);
    return n;
+}
+
+
+void smoothHistogram(float *hist, int bins)
+{
+   int i;
+   float prev, temp;
+
+   prev = hist[bins - 1];
+   for (i = 0; i < bins; i++) {
+      temp = hist[i];
+      hist[i] = (prev + hist[i] + hist[(i + 1 == bins) ? 0 : i + 1]) / 3.0f;
+      prev = temp;
+   }
+}
+
+float interpPeak(float a, float b, float c)
+{
+   if (b < 0.0)
+   {
+      a = -a;
+      b = -b;
+      c = -c;
+   }
+   return 0.5f * (a - c) / (a - 2.0f * b + c);
+}
+
+void computeHistAngles(Patch& patch, vector<float> &angles)
+{
+   angles.clear();
+   int rows, cols, bin;
+   patch.computeGradientPolar();
+
+   const int OriBins=36;
+   static float hist[OriBins];
+   float gval, langle;
+   const Mat& grad = patch.gradMag;
+   const Mat& ori = patch.gradAngle;
+
+   rows = grad.rows;
+   cols = grad.cols;
+
+   for (int i = 0; i < OriBins; i++) hist[i] = 0.0;
+
+   for (int r = 1; r < rows - 1; r++)
+   {
+      for (int c = 1; c <= cols - 1; c++)
+      {
+         gval = grad.at<float>(r,c);
+         if (gval > 1.0)
+         {
+            /* ori is in range of -PI to PI, get it to <0,1) depending on OrientationWraparound */
+            langle = ori.at<float>(r,c)/CV_PI/2.f + 0.5;
+            bin = (int) (OriBins * langle);
+            assert(bin >= 0 && bin <= OriBins);
+            hist[bin] +=  gval * patch.mask.at<float>(r,c);
+         }
+      }
+   }
+   /* Apply smoothing 6 times for accurate Gaussian approximation. */
+   for (int i = 0; i < 6; i++) smoothHistogram(hist, OriBins);
+
+   float maxval = 0.0;
+   for (int i = 0; i < OriBins; i++) if (hist[i] > maxval) maxval = hist[i];
+   for (int i = 0; i < OriBins; i++)
+   {
+      int prev = (i == 0 ? OriBins - 1 : i - 1);
+      int next = (i == OriBins - 1 ? 0 : i + 1);
+      if (hist[i] > hist[prev]  &&  hist[i] > hist[next] && hist[i] >= 0.8 * maxval)
+      {
+         float interp = interpPeak(hist[prev], hist[i], hist[next]);
+         /* Set orientation to interval <-PI, +PI> */
+         angles.push_back(2.f*CV_PI * (i + 0.5f + interp) / OriBins - float(CV_PI));
+      }
+   }
+}
+
+
+void Patch::computeGradientCart()
+{
+   const int width = data.cols;
+   const int height = data.rows;
+   // prepare gradients
+   // TODO implement through pointers
+   for (int r = 0; r < height; ++r)
+      for (int c = 0; c < width; ++c)
+      {
+         if (c == 0) gradX.at<float>(r,c) = data.at<float>(r,c+1) - data.at<float>(r,c); else
+            if (c == width-1) gradX.at<float>(r,c) = data.at<float>(r,c) - data.at<float>(r,c-1); else
+               gradX.at<float>(r,c) = data.at<float>(r,c+1) - data.at<float>(r,c-1);
+
+         if (r == 0) gradY.at<float>(r,c) = data.at<float>(r+1,c) - data.at<float>(r,c); else
+            if (r == height-1) gradY.at<float>(r,c) = data.at<float>(r,c) - data.at<float>(r-1,c); else
+               gradY.at<float>(r,c) = data.at<float>(r+1,c) - data.at<float>(r-1,c);
+      }
+}
+
+
+void Patch::computeGradientPolar()
+{
+
+   const int width = data.cols;
+   const int height = data.rows;
+   // prepare gradients
+   // TODO implement through pointers
+   for (int r = 0; r < height; ++r)
+      for (int c = 0; c < width; ++c)
+      {
+         if (c == 0) gradX.at<float>(r,c) = data.at<float>(r,c+1) - data.at<float>(r,c); else
+            if (c == width-1) gradX.at<float>(r,c) = data.at<float>(r,c) - data.at<float>(r,c-1); else
+               gradX.at<float>(r,c) = data.at<float>(r,c+1) - data.at<float>(r,c-1);
+
+         if (r == 0) gradY.at<float>(r,c) = data.at<float>(r+1,c) - data.at<float>(r,c); else
+            if (r == height-1) gradY.at<float>(r,c) = data.at<float>(r,c) - data.at<float>(r-1,c); else
+               gradY.at<float>(r,c) = data.at<float>(r+1,c) - data.at<float>(r-1,c);
+      }
+
+#if CV_SSE2
+   cv::cartToPolar(gradX, gradY, gradMag, gradAngle, false);
+   for (int r = 0; r < height; ++r)
+      for (int c = 0; c < width; ++c)
+      {
+         this->gradAngle.at<float>(r,c) = this->gradAngle.at<float>(r,c) - CV_PI;
+      }
+#else
+   // TODO implement through pointers
+   float grad_x, grad_y;
+   for (int r = 0; r < height; ++r)
+      for (int c = 0; c < width; ++c)
+      {
+         grad_x = gradX.at<float>(r,c);
+         grad_y = gradY.at<float>(r,c);
+         this->gradAngle.at<float>(r,c) = atan2(grad_y, grad_x);
+         this->gradMag.at<float>(r,c) = sqrt(grad_x*grad_x + grad_y*grad_y);
+      }
+#endif
 }
