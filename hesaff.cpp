@@ -10,6 +10,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <opencv2/opencv.hpp>
 
 #include <boost/program_options.hpp>
 
