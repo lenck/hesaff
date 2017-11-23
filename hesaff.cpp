@@ -12,8 +12,7 @@
 #include <sstream>
 #include <opencv2/opencv.hpp>
 
-#include <boost/program_options.hpp>
-
+#include "popl.h"
 #include "pyramid.h"
 #include "helpers.h"
 #include "affine.h"
@@ -21,6 +20,7 @@
 
 using namespace cv;
 using namespace std;
+using namespace popl;
 
 #define RET_ERROR 1
 #define RET_SUCCESS 0
@@ -109,7 +109,7 @@ public:
                             1., 0., 0., 1., type, response, 0);
       }
    }
-   
+
    void onAffineShapeFound(
          const Mat &blur, float x, float y, float s, float pixelDistance,
          float a11, float a12,
@@ -180,7 +180,7 @@ public:
       for (size_t i=0; i<keys.size(); i++)
       {
          Keypoint &k = keys[i];
-         
+
          float sc = AffineShape::par.mrSize * k.s;
          Mat A = (Mat_<float>(2,2) << k.a11, k.a12, k.a21, k.a22);
          SVD svd(A, SVD::FULL_UV);
@@ -206,8 +206,8 @@ public:
          Keypoint &k = keys[i];
 
          float sc = (AffineShape::par.mrSize * k.s);
-         // Format: DRID X Y A11 A21 A12 A22 - matlab-like stacking
-         out << k.drid << " " << k.x << " " << k.y << " " << k.a11*sc << " " << k.a21*sc << " " << k.a12*sc << " " << k.a22*sc;
+         // Format: DRID RESP X Y A11 A21 A12 A22 - matlab-like stacking
+         out << k.drid << " " << k.response << " " << k.x << " " << k.y << " " << k.a11*sc << " " << k.a21*sc << " " << k.a12*sc << " " << k.a22*sc;
          for (size_t i=0; i<128; i++)
             out << " " << int(k.desc[i]);
          out << endl;
@@ -221,90 +221,61 @@ int main(int argc, char **argv)
    string outputFileName;
    HessianAffineParams par;
 
-   namespace po = boost::program_options;
-   po::options_description desc("Options");
+   OptionParser op("Allowed options");
+   auto help_o = op.add<Switch>("h", "help", "produce help message");
+   auto verb_o = op.add<Switch>("v", "verbose", "be verbose", &par.verbose);
+   auto im_o = op.add<Value<string>>("i", "image", "input image", "", &imageFileName);
+   auto out_o = op.add<Value<string>>("o", "output", "output feature file", "", &outputFileName);
+   auto format_o = op.add<Value<int>>("k", "keypoint_format", "set output keypoint format (oxford=1/affdenorm=2)", 1);
+   op.add<Value<float>>("t", "threshold", "min. response threshold", 5.3, &par.threshold);
+   op.add<Value<bool>>("r", "rot_invariant", "rotation invariance", false, &par.rot_invariant);
+   op.add<Value<bool>>("a", "aff_invariant", "affine invariance", true, &par.aff_invariant);
+   op.add<Value<int>>("", "max_iter", "max number of aff. adapt. iterations", 16, &par.max_iter);
+   op.add<Value<float>>("m", "desc_factor", "magnification factor for measurement region", 5.2, &par.desc_factor);
+   op.add<Value<int>>("", "patch_size", "SIFT patch size", 41, &par.patch_size);
+   op.add<Value<bool>>("f", "fast_norm", "set fast patch normalisation", true, &par.fast_norm);
+   op.parse(argc, argv);
 
-   desc.add_options()
-         ("image,i", po::value<string>(&imageFileName)->required(),
-          "input image")
-         ("output,o",  po::value<string>(&outputFileName),
-          "output feature file [<input_image>.hesaff.sift]")
-         ("keypoint_format,k",  po::value<int>(),
-          "set output keypoint format (oxford=1/affdenorm=2) [1]")
-         ("threshold,t", po::value<float>(&par.threshold),
-          "min. response threshold [5.3]")
-         ("rot_invariant,r",  po::value<bool>(&par.rot_invariant),
-          "set rotation invariance [off]")
-         ("aff_invariant,a",  po::value<bool>(&par.aff_invariant),
-          "set affine invariance [on]")
-         ("max_iter", po::value<int>(&par.max_iter),
-          "max number of aff. adapt. iterations [16]")
-         ("desc_factor,m", po::value<float>(&par.desc_factor),
-          "magnification factor for measurement region [5.2]")
-         ("patch_size", po::value<int>(&par.patch_size),
-          "SIFT patch size [41]")
-         ("fast_norm,f",  po::value<bool>(&par.fast_norm),
-          "set fast patch normalisation [on]")
-         ("help,h", "Print help messages")
-         ("verbose,v", "set verbosity level")
-         ;
-
-   po::positional_options_description positionalOptions;
-   positionalOptions.add("image", 1);
-
-   po::variables_map vm;
-
-   try
+   if ( help_o->is_set()  )
    {
-      po::store(po::command_line_parser(argc, argv).options(desc)
-                .positional(positionalOptions).run(),
-                vm);
-
-      if ( vm.count("help")  )
-      {
-         cout << "Hessian Affine Feature Detector" << std::endl
-              << "Detect affine covariant feature points and describes " << std::endl
-              << "them using SIFT descriptor. Available options:"
-              << std::endl << std::endl
-              << desc << std::endl
-              << "Output formats:" << std::endl << std::endl
-              << "OXFORD: X Y S11 S12 S22 <SIFT_DESC>\n"
-                 "X, Y are coordiantes of the center. S11, S12, S22 are \n"
-                 "the elements of a 2x2 covariance matrix S (a positive\n"
-                 "semidefinite matrix) defining the ellipse shape. The ellipse\n"
-                 "is the set of points {x + T: x' S x = 1}, where T is the center.\n\n"
-              << "AFFNORM: DRID X Y A11 A21 A12 A22 <SIFT_DESC> - matlab-like stacking\n"
-                 "The ellipse is obtaine by transforming a unit circle by A as the \n"
-                 "set of points {A x + T : |x| = 1}, where T is the center.\n"
-                 "DRID is the unique id of a distinguished region.\n"
-                 "Ellipse and affine frame definitions from vl_plotframe\n"
-                 "documentation of VLFeat library (vlfeat.org).\n"
-              << std::endl;
-         return RET_SUCCESS;
-      }
-      po::notify(vm);
+      cout << "Hessian Affine Feature Detector" << std::endl
+           << "Detect affine covariant feature points and describes " << std::endl
+           << "them using SIFT descriptor. Available options:"
+           << std::endl << std::endl
+           << op << std::endl
+           << "Output formats:" << std::endl << std::endl
+           << "OXFORD: X Y S11 S12 S22 <SIFT_DESC>\n"
+              "X, Y are coordiantes of the center. S11, S12, S22 are \n"
+              "the elements of a 2x2 covariance matrix S (a positive\n"
+              "semidefinite matrix) defining the ellipse shape. The ellipse\n"
+              "is the set of points {x + T: x' S x = 1}, where T is the center.\n\n"
+           << "AFFNORM: DRID RESP X Y A11 A21 A12 A22 <SIFT_DESC> - matlab-like stacking\n"
+              "The ellipse is obtaine by transforming a unit circle by A as the \n"
+              "set of points {A x + T : |x| = 1}, where T is the center.\n"
+              "DRID is the unique id of a distinguished region.\n"
+              "Ellipse and affine frame definitions from vl_plotframe\n"
+              "documentation of VLFeat library (vlfeat.org).\n"
+           << std::endl;
+      return RET_SUCCESS;
    }
-   catch(boost::program_options::required_option& e)
-   {
-      cerr << "ERROR: " << e.what() << endl << endl
-           << desc << endl;
-      return RET_ERROR;
-   }
-   catch(boost::program_options::error& e)
-   {
-      cerr << "ERROR: " << e.what() << endl << endl
-           << desc << endl;
+
+
+   if (!im_o->is_set()) {
+      if (op.unknown_options().size() == 1)
+         imageFileName = op.unknown_options()[1];
+      else
+         cerr << "ERROR: image option not set" << endl;
       return RET_ERROR;
    }
 
-   if (vm.count("verbose")) par.verbose = true;
-   if (vm.count("keypoint_format")) {
-      par.keypoint_format = (OutputFormat)vm["keypoint_format"].as<int>();
-   }
-   if (!vm.count("output")) {
+   if (!out_o->is_set()) {
       stringstream ss;
       ss << imageFileName << ".hes.sift";
       outputFileName = ss.str();
+   }
+
+   if (format_o->is_set()) {
+     par.keypoint_format = (OutputFormat)format_o->value();
    }
 
    if (par.verbose) {
