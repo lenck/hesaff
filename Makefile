@@ -1,6 +1,6 @@
 CPP_FILES := pyramid.cpp siftdesc.cpp helpers.cpp
 OBJ_FILES := $(addprefix obj/,$(notdir $(CPP_FILES:.cpp=.o)))
-FLAGS := -O3 -Wall -lrt `pkg-config --cflags --libs opencv` 
+FLAGS :=  -std=c++11 -O3 -Wall -lrt `pkg-config --cflags --libs opencv` 
 
 all: hesaff
 

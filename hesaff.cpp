@@ -292,7 +292,8 @@ int main(int argc, char **argv)
            << "keypoint_format\t: " << par.keypoint_format << endl;
    }
 
-   Mat tmp = imread(imageFileName);
+   const char* imf = imageFileName.c_str();
+   Mat tmp = imread(imf);
    Mat image(tmp.rows, tmp.cols, CV_32FC1, Scalar(0));
 
    float *out = image.ptr<float>(0);
